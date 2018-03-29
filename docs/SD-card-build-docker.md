@@ -202,6 +202,14 @@ To fix SSHD bug (when using the on board WiFi adapter and NO Ethernet). [Forum t
 
 # Enable root filesystem read-only mode
 
+## Implications for read-only root mode in the systemd transition
+
+One of the (many) design goals of systemd is to facilitate `volatile` and `stateless` Linux installations which have applications in security-sensitive and embedded applications. To this end systemd-based Linux are generally able to populate an empty /var at boot without issue. This aligns well with the requirement to reduce IO to prolong the life of SD memory. 
+
+In a `volatile` configuration /etc is used for local configuration of the system which persists across reboots.
+
+One aspect of the previous emonSD setup (pre-Stretch) which is inconsistent with systemd approach is that /var should be RW at all times. This means that /var should be mounted as tmpfs and all data created at runtime that needs to be persisted across reboots must be stored in /home/pi/data. 
+
 ## Setup Data partition
 
 An alternative to following section is to use the [sdpart script](https://github.com/emoncms/usefulscripts) which will create & format the SD card partitions as necessary.
@@ -228,8 +236,7 @@ Using Gparted on Ubuntu reduce size of root partition by 300Mb to make space for
     sudo mkfs.ext2 -b 1024 /dev/mmcblk0p3
     
 **Note:** *We create here an ext2 filesystem with a blocksize of 1024 bytes instead of the default 4096 bytes. A lower block size results in significant write load reduction when using an application like emoncms that only makes small but frequent and across many files updates to disk. Ext2 is chosen because it supports multiple linux user ownership options which are needed for the mysql data folder. Ext2 is non-journaling which reduces the write load a little although it may make data recovery harder vs Ext4, The data disk size is small however and the downtime from running fsck is perhaps less critical.*
-    
-    
+   
 Create a directory that will be a mount point for the rw data partition
 
     mkdir /home/pi/data
@@ -248,8 +255,7 @@ The Pi will now run in Read-Only mode from the next restart. The following fstab
 
 ```
 tmpfs           /tmp            tmpfs   nodev,nosuid,size=30M,mode=1777 0  0
-tmpfs           /var/log        tmpfs   nodev,nosuid,size=50M,mode=1777 0  0
-tmpfs           /var/lib/dhcp   tmpfs   nodev,nosuid,size=1M,mode=1777 0  0
+tmpfs           /var            tmpfs   nodev,nosuid,size=300M,mode=1777 0  0
 proc            /proc           proc    defaults 0 0
 /dev/mmcblk0p1  /boot           vfat    defaults,noatime,nodiratime 0 2
 /dev/mmcblk0p2  /               ext4    defaults,ro,noatime,nodiratime,errors=remount-ro 0 1
@@ -282,11 +288,42 @@ Add the line:
 
 ## Tweak's to make system work with RO root FS
 
+### Override Debian attempting to recreate symbolic link from /etc/mtab to /proc/self/mounts
+
+Debian attempts to recreate the symbolic link from /etc/mtab to /proc/self/mounts which causes systemd-tmpfiles-create.service to exit with an error (regarded as error by some downstream e.g. https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1547033). This can be fixed by overriding /usr/lib/tmpfiles.d/debian.conf by placing the following in /etc/tmpfiles.d/debian.conf:
+
+	# Created to override default to support read only root fs operation
+	# Type Path    Mode UID  GID  Age Argument
+	L /run/initctl -    -    -    -   /run/systemd/initctl/fifo
+	L /run/shm     -    -    -    -   /dev/shm
+	d /run/sendsigs.omit.d 0755 root root -
+
+	L /etc/mtab   -    -    -    -  ../proc/self/mounts   #!<------ CHANGED!
+
+### Create /var/lib/dbus at run time
+
+(Maybe also a Raspbian/Debian bug?) systemd-tmpfiles-create.service attempts to put a symlink in /var/lib/dbus but where /var is tmpfs the /var/lib/dbus folder does not persist across reboots so this throws an error. This can be fixed by forcing creation of /var/lib/dbus every boot by overriding /usr/lib/tmpfiles.d/dbus.conf by putting the following in /etc/tmpfiles.d/dbus.conf :
+
+	# Created to override default to support read only root fs operation
+	# Type Path                     Mode    UID     GID     Age     Argument
+	d /var/lib/dbus 0755 root root -
+	L /var/lib/dbus/machine-id      -       -       -       -       /etc/machine-id
+
+### systemd-timesyncd fails because /var/tmp does not exist
+
+This problem is referenced here but its cause is unknown (but likely due to /var not persisting across reboots):
+https://bugs.freedesktop.org/show_bug.cgi?id=89217
+
+Add the following in /etc/tmpfiles.d/systemd-timesyncd.conf:
+
+	# Type Path    Mode UID  GID  Age Argument
+	L /var/tmp -    -    -    -   /tmp
+
 ### DNS Resolve fix
 
 **Issue:** Linux needs to write to /etc/resolv.conf and /etc/resolv.conf.dhclient-new to save network DNS settings 
 
-**Solution:** move files to ~/data RW partition and symlink (a modded dhclient-script file is not required in STRETCH).
+**Solution:** move files to ~/data RW partition and symlink (a modded dhclient-script file is not required in Debian Stretch).
 
 #### Move resolv.conf to RW partition 
 	cp /etc/resolv.conf /home/pi/data/
@@ -299,7 +336,7 @@ Add the line:
 	sudo rm /etc/resolv.conf.dhclient-new
 	sudo ln -s /home/pi/data/resolv.conf.dhclient-new /etc/resolv.conf.dhclient-new
 
-### NTP time fix
+### NTP time fix (alternate solution needed under Debian Stretch)
 
 Enables NTP and fake-hwclock to function on a Pi with a read-only file system
 
@@ -316,23 +353,9 @@ Install with:
 
 [Discussion Thread](http://openenergymonitor.org/emon/node/5877)
 
-## Fix Random seed
+### Fix Random seed (not needed in Debain Stretch)
 
-Random seed is important for secure ssh and https connections. Using a RO root FS we need to symlink randomised to RW data partition to enable to service to run and be random. See [forum thread](https://community.openenergymonitor.org/t/random-seed/3637).
-
-```
-$ rpi-rw
-$ cd /var/lib/systemd/
-$ sudo mv random-seed ~/data/
-$ sudo ln -s ~/data/random-seed
-$ rpi-ro
-$ sudo systemctl restart systemd-random-seed
-$ sudo systemctl status systemd-random-seed
-```
-
-Random seed service should now be running.
-
-## Install Docker
+## Install Docker under rootfs read only 
 
 **Issue:** 
 Docker typically runs from /var/lib. 
