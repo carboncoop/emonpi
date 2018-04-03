@@ -142,9 +142,9 @@ This changes the  a custom cmdline.txt file:
 
 From:
 
-	dwc_otg.lpm_enable=0 console=ttyAMA0,115200 console=tty1 root=/dev/mmcblk0p2 rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait
+	dwc_otg.lpm_enable=0 console=serial0,115200 console=tty1 root=/dev/mmcblk0p2 rootfstype=ext4 elevator=deadline fsck.repair=yes rootwait
 
-`In STRETCH the primary UART is referred to as serial0 instead of ttyAMA0 but same considerations apply.`
+(`In STRETCH the primary UART is referred to as serial0 instead of ttyAMA0 but same considerations apply.`)
 
 To:
 
@@ -158,6 +158,8 @@ Note changing `elevator=deadline` to `elevator=noop` disk scheduler. Noop that i
 
  	sudo systemctl stop serial-getty@ttyAMA0.service
  	sudo systemctl disable serial-getty@ttyAMA0.service
+	sudo systemctl stop serial-getty@serial0.service
+ 	sudo systemctl disable serial-getty@serial0.service
 
 `As above this may need to be changed to serial0`
 
@@ -187,6 +189,8 @@ See [RasPi device tree commit](https://github.com/raspberrypi/firmware/commit/84
 Reboot then test serial comms with:
 
 	sudo minicom -D /dev/ttyAMA0 -b38400
+
+(CHANGE TO serial0 on debian stretch??)
 
 You should see data from emonPi ATmega328, sending serial `v` should result in emonPi returning it's firmware version and config settings.
 
@@ -309,15 +313,30 @@ Debian attempts to recreate the symbolic link from /etc/mtab to /proc/self/mount
 	d /var/lib/dbus 0755 root root -
 	L /var/lib/dbus/machine-id      -       -       -       -       /etc/machine-id
 
-### systemd-timesyncd fails because /var/tmp does not exist
+### systemd-timesyncd tmpfiles
 
-This problem is referenced here but its cause is unknown (but likely due to /var not persisting across reboots):
+systemd-timesyncd needs to be able to write the time to a file (/var/lib/systemd/timesync/clock).
+
+A problem is referenced here but its cause is unknown (but likely due to /var not persisting across reboots):
 https://bugs.freedesktop.org/show_bug.cgi?id=89217
 
 Add the following in /etc/tmpfiles.d/systemd-timesyncd.conf:
 
 	# Type Path    Mode UID  GID  Age Argument
 	L /var/tmp -    -    -    -   /tmp
+	d /var/lib/systemd/timesync 0755 root root -
+	L /var/lib/systemd/timesync/clock - - - - /home/pi/data/clock
+
+### dpkg tmpfiles
+
+dpkg needs various files/directories to be created under /var/lib/dpkg in order to work properly.
+
+	# Type Path                     Mode    UID     GID     Age     Argument
+	d /var/lib/dpkg 0755 root root -
+	d /var/lib/dpkg/updates 0755 root root -
+	d /var/lib/dpkg/info 0755 root root -
+	d /var/lib/dpkg/alternatives 0755 root root -
+	f /var/lib/dpkg/status 0755 root root - 
 
 ### DNS Resolve fix
 
