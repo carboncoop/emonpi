@@ -127,7 +127,7 @@ Append `gpu_mem=16` to `/boot/config.txt` this caps the RAM available to the GPU
 
 ***
 
-# RasPi Serial port setup
+# RasPi Serial port setup (changes in Debian Stretch)
 
 
 To allow the emonPi to communicate with the RasPi via serial we need to disconnect the terminal console from /tty/AMA0.
@@ -208,11 +208,13 @@ To fix SSHD bug (when using the on board WiFi adapter and NO Ethernet). [Forum t
 
 ## Implications for read-only root mode in the systemd transition
 
-One of the (many) design goals of systemd is to facilitate `volatile` and `stateless` Linux installations which have applications in security-sensitive and embedded applications. To this end systemd-based Linux are generally able to populate an empty /var at boot without issue. This aligns well with the requirement to reduce IO to prolong the life of SD memory. 
+Debian Stretch (https://wiki.debian.org/DebianStretch) has fully made the transition to systemd, with many core pieces now systemd 'native'.
 
-In a `volatile` configuration /etc is used for local configuration of the system which persists across reboots.
+One of the (many) design goals of systemd is to facilitate `volatile` and `stateless` Linux installations (http://0pointer.net/blog/projects/stateless.html) which have applications in security-sensitive and embedded applications. To this end, recent systemd-based Linux are generally able to populate an empty /var at boot without issue. This aligns well with the requirement to reduce IO to prolong the life of SD memory as /var can be mounted as a tmpfs and populated at runtime further reducing the need for disk writes. 
 
-One aspect of the previous emonSD setup (pre-Stretch) which is inconsistent with systemd approach is that /var should be RW at all times. This means that /var should be mounted as tmpfs and all data created at runtime that needs to be persisted across reboots must be stored in /home/pi/data. 
+In a `volatile` configuration /etc continues to be used for local configuration information which persists across reboots (a `stateless` configuration would additionally mount /etc/ as a tmpfs).
+
+One aspect of the previous emonSD setup (pre-Stretch) which is inconsistent with systemd in general is that /var should be RW at all times. This means that /var should be mounted as tmpfs rather than be part of the read only rootfs. All data created at runtime that needs to be persisted across reboots must then be stored either in /home/pi/data. This is reflected in the below although.
 
 ## Setup Data partition
 
@@ -245,7 +247,7 @@ Create a directory that will be a mount point for the rw data partition
 
     mkdir /home/pi/data
     
-## Read-only mode
+## Read-only mode 
 
 Then run these commands to make changes to filesystem
 
@@ -288,11 +290,11 @@ Add message at shell login to alert users to RO mode:
 
 Add the line:
 
-	The file system is in Read Only (RO) mode. If you need to make changes, use the command rpi-rw to put the file system in Read Write (RW) mode. Use rpi-ro to return to RO mode. The /home/pi/data directory is always in RW mode
+	The file system is in Read Only (RO) mode. If you need to make changes, use the command rpi-rw to put the file system in Read Write (RW) mode. Use rpi-ro to return to RO mode. The /home/pi/data directory is always in RW mode.
 
 ## Tweak's to make system work with RO root FS
 
-### Override Debian attempting to recreate symbolic link from /etc/mtab to /proc/self/mounts
+### Override Debian attempting to recreate symbolic link from /etc/mtab to /proc/self/mounts (new)
 
 Debian attempts to recreate the symbolic link from /etc/mtab to /proc/self/mounts which causes systemd-tmpfiles-create.service to exit with an error (regarded as error by some downstream e.g. https://bugs.launchpad.net/ubuntu/+source/systemd/+bug/1547033). This can be fixed by overriding /usr/lib/tmpfiles.d/debian.conf by placing the following in /etc/tmpfiles.d/debian.conf:
 
@@ -304,7 +306,7 @@ Debian attempts to recreate the symbolic link from /etc/mtab to /proc/self/mount
 
 	L /etc/mtab   -    -    -    -  ../proc/self/mounts   #!<------ CHANGED!
 
-### Create /var/lib/dbus at run time
+### Create /var/lib/dbus at run time (new)
 
 (Maybe also a Raspbian/Debian bug?) systemd-tmpfiles-create.service attempts to put a symlink in /var/lib/dbus but where /var is tmpfs the /var/lib/dbus folder does not persist across reboots so this throws an error. This can be fixed by forcing creation of /var/lib/dbus every boot by overriding /usr/lib/tmpfiles.d/dbus.conf by putting the following in /etc/tmpfiles.d/dbus.conf :
 
@@ -313,21 +315,17 @@ Debian attempts to recreate the symbolic link from /etc/mtab to /proc/self/mount
 	d /var/lib/dbus 0755 root root -
 	L /var/lib/dbus/machine-id      -       -       -       -       /etc/machine-id
 
-### systemd-timesyncd tmpfiles
+### systemd-timesyncd tmpfiles (new)
 
 systemd-timesyncd needs to be able to write the time to a file (/var/lib/systemd/timesync/clock).
-
-A problem is referenced here but its cause is unknown (but likely due to /var not persisting across reboots):
-https://bugs.freedesktop.org/show_bug.cgi?id=89217
 
 Add the following in /etc/tmpfiles.d/systemd-timesyncd.conf:
 
 	# Type Path    Mode UID  GID  Age Argument
 	L /var/tmp -    -    -    -   /tmp
 	d /var/lib/systemd/timesync 0755 root root -
-	L /var/lib/systemd/timesync/clock - - - - /home/pi/data/clock
 
-### dpkg tmpfiles
+### dpkg tmpfiles (new)
 
 dpkg needs various files/directories to be created under /var/lib/dpkg in order to work properly.
 
@@ -338,24 +336,30 @@ dpkg needs various files/directories to be created under /var/lib/dpkg in order 
 	d /var/lib/dpkg/alternatives 0755 root root -
 	f /var/lib/dpkg/status 0755 root root - 
 
-### DNS Resolve fix
+### DNS Resolve fix (alternate solution under Debian Stretch)
 
 **Issue:** Linux needs to write to /etc/resolv.conf and /etc/resolv.conf.dhclient-new to save network DNS settings 
 
-**Solution:** move files to ~/data RW partition and symlink (a modded dhclient-script file is not required in Debian Stretch).
+**Solution:** move files to /var/run RW partition and symlink 
 
 #### Move resolv.conf to RW partition 
-	cp /etc/resolv.conf /home/pi/data/
+	cp /etc/resolv.conf /var/run
 	sudo rm /etc/resolv.conf 
-	sudo ln -s /home/pi/data/resolv.conf /etc/resolv.conf
+	sudo ln -s /var/run/resolv.conf /etc/resolv.conf
 
 #### Create resolv.conf.dhclient-new file in RW partition and symlink to /etc
-	touch /home/pi/data/resolv.conf.dhclient-new
-	sudo chmod 777 /home/pi/data/resolv.conf.dhclient-new 
+	touch /var/run/resolv.conf.dhclient-new
+	sudo chmod 777 /var/run/resolv.conf.dhclient-new 
 	sudo rm /etc/resolv.conf.dhclient-new
-	sudo ln -s /home/pi/data/resolv.conf.dhclient-new /etc/resolv.conf.dhclient-new
+	sudo ln -s /var/run/resolv.conf.dhclient-new /etc/resolv.conf.dhclient-new
 
-### NTP time fix (alternate solution needed under Debian Stretch)
+(Note: a modded dhclient-script file is no longer required in Debian Stretch).
+
+### NTP time fix (alternate solution possible under Debian Stretch)
+
+Going forward systemd-timesyncd is able to perform time synchronisation, however the implementation available in Debian seems to still contain some problems so ntpd has been retained. This first needs to be installed:
+
+	sudo apt-get install ntpd
 
 Enables NTP and fake-hwclock to function on a Pi with a read-only file system
 
