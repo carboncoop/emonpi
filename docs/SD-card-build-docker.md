@@ -340,7 +340,7 @@ dpkg needs various files/directories to be created under /var/lib/dpkg in order 
 
 **Issue:** Linux needs to write to /etc/resolv.conf and /etc/resolv.conf.dhclient-new to save network DNS settings 
 
-**Solution:** move files to /var/run RW partition and symlink 
+**Solution:** move files to /var/run RW partition and symlink back to /etc.
 
 #### Move resolv.conf to RW partition 
 	cp /etc/resolv.conf /var/run
@@ -355,33 +355,81 @@ dpkg needs various files/directories to be created under /var/lib/dpkg in order 
 
 (Note: a modded dhclient-script file is no longer required in Debian Stretch).
 
-### NTP time fix (alternate solution possible under Debian Stretch)
+### NTP time fix 
 
-Going forward systemd-timesyncd is able to perform time synchronisation, however the implementation available in Debian seems to still contain some problems so ntpd has been retained. This first needs to be installed:
+Going forward systemd-timesyncd is able to perform time synchronisation (and is now the default on Debian). In the future it will also be able to maintain a fake hardware clock without requiring the use of fake-hwclock. However, the implementation of systemd-timesyncd in Debian Stretch seems to have some problems (e.g. failing quietly when using the RO rootfs despite links to RW) so use of ntpd has been retained. This first needs to be installed:
 
 	sudo apt-get install ntpd
+	
+We also want to force an NTP clock sync periodically.
 
-Enables NTP and fake-hwclock to function on a Pi with a read-only file system
+### fake-hwclock
 
-1. move the fake-hwclock back to it's original location if used on OEM SD card image
-2. comment out the existing fake-hwclocks cron entry and create a ntp-backup cron entry
-3. add an init script to "backup" current time & drift value at shutdown and by cron
-4. remove these ntp-backup setup files once installation is done
-5. get correct time from ntp servers
-6. backup the current time to fake-hwclock
+The Raspberry Pi does not have an RTC so in order to retain some idea of time across boots (or at least before an NTP sync occurs) you need to install a fake hardware clock mechanism: 
 
-Install with:
+	sudo apt-get install fake-hwclock
 
-	git clone https://github.com/openenergymonitor/ntp-backup.git ~/ntp-backup && ~/ntp-backup/install
+And move the file used by fake-hwclock to store this time data to the RW partition:
+	
+	sudo rm /etc/fake-hwclock.data
+	sudo ln -s /home/pi/data/fake-hwclock.data /etc/fake-hwclock.data
 
-[Discussion Thread](http://openenergymonitor.org/emon/node/5877)
+In order to force a correct fake-hwclock load/save at boot/shutdown with the use of our RW partition we need to overload the provided systemd service file. Copy the following into /etc/systemd/system/fake-hwclock.service:
+
+	[Unit]
+	Description=Restore / save the current clock
+	Documentation=man:fake-hwclock(8)
+	DefaultDependencies=no
+	Before=sysinit.target shutdown.target time-sync.target ntpdate.service ntpd.service
+	Conflicts=shutdown.target
+	Requires=local-fs.target
+	After=local-fs.target
+	Wants=time-sync.target
+
+	[Service]
+	EnvironmentFile=-/etc/default/fake-hwclock
+	ExecStart=/sbin/fake-hwclock load $FORCE
+	ExecStop=/sbin/fake-hwclock save
+	Type=oneshot
+	RemainAfterExit=yes
+
+	[Install]
+	WantedBy=sysinit.target multi-user.target
+	Also=fake-hwclock-tick.timer
+
+In order to setup a periodic save of time data we need to add the following in /etc/systemd/system/fake-hwclock-tick.service:
+
+	[Unit]
+	Description=Save hwclock by timer
+
+	[Service]
+	Type=oneshot
+	ExecStart=/sbin/fake-hwclock save > /dev/null
+
+And the following in /etc/systemd/system/fake-hwclock-tick.timer:
+
+	[Unit]
+	Description=Save hwclock every 15 minutes
+
+	[Timer]
+	OnBootSec=15min
+	OnUnitActiveSec=15min
+
+	[Install]
+	WantedBy=multi-user.target
+
+The previous scheme using the ntp-backup service is no longer required as fake-hwclock systemd service can be modified to run after all filesystems have been mounted which prevents the time being reset.
+
+We now need to reload and restart the fake-hwclock daemon:
+	sudo systemctl daemon-reload
+	sudo systemctl restart fake-hwclock
 
 ### Fix Random seed (not needed in Debain Stretch)
 
-## Install Docker under rootfs read only 
+## Install Docker 
 
 **Issue:** 
-Docker typically runs from /var/lib. 
+Docker typically runs from /var/lib but this will not be persisted . 
 
 **Solution:**
 Move the Docker directory to /home/pi/data.
