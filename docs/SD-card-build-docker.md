@@ -348,8 +348,10 @@ dpkg needs various files/directories to be created under /var/lib/dpkg in order 
 Going forward systemd-timesyncd is able to perform time synchronisation (and is now the default on Debian). In the future it will also be able to maintain a fake hardware clock without requiring the use of fake-hwclock. However, the implementation of systemd-timesyncd in Debian Stretch seems to have some problems (e.g. failing quietly when using the RO rootfs despite links to RW) so use of ntpd has been retained. This first needs to be installed:
 
 	sudo apt-get install ntpd
+	sudo systemctl start ntp
+	sudo timedatectl set-ntp 1
 	
-We also want to force an NTP clock sync periodically.
+We also want to force an NTP clock sync periodically. This is setup below.
 
 ### fake-hwclock
 
@@ -362,7 +364,7 @@ And move the file used by fake-hwclock to store this time data to the RW partiti
 	sudo rm /etc/fake-hwclock.data
 	sudo ln -s /home/pi/data/fake-hwclock.data /etc/fake-hwclock.data
 
-In order to force a correct fake-hwclock load/save at boot/shutdown with the use of our RW partition we need to overload the provided systemd service file. Copy the following into /etc/systemd/system/fake-hwclock.service:
+In order to force a correct fake-hwclock load/save at boot/shutdown with the use of our RW partition we need to overload the provided systemd service file so that it waits until the file systems have been setup so it can correctly read the file. Copy the following into /etc/systemd/system/fake-hwclock.service:
 
 	[Unit]
 	Description=Restore / save the current clock
