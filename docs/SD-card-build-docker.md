@@ -422,7 +422,16 @@ We now need to reload and restart the fake-hwclock daemon:
 Docker typically runs from /var/lib but this will not be persisted . 
 
 **Solution:**
-Move the Docker directory to /home/pi/data.
+Install Docker and Docker Compose:
+	sudo apt-get install apt-listchanges
+	sudo apt-get install docker.io docker-compose
+	
+Move the Docker directory to /home/pi/data by ensuring the following is set in the file /etc/default/docker:
+	DOCKER_OPTS="-g /home/pi/data/docker"
+	sudo mkdir -p /home/pi/data/docker
+	sudo systemctl restart docker
+
+
 
 ## Move MYSQL database
 
