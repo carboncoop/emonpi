@@ -574,7 +574,7 @@ If all is working we should see `helloWorld` in the second shell
 Install other EmonHub dependencies if they have not been installed already by emonPi LCD service
 
 ```
-sudo apt-get install -y python-pip python-serial python-configobj”
+sudo apt-get install -y python-pip python-serial python-configobj
 sudo pip install paho-mqtt pydispatcher
 ```
 
