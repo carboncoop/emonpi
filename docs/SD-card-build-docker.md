@@ -108,18 +108,6 @@ From 'raspberrypi' to 'emonpi2016'
 
 	sudo passwd
 
-## Root filesystem read-only with RW data partition
-
-
-## Custom MOTD (message of the day)
-
-Use custom motd to alert users they are logging into an emonPi with RW / RO toggle instructions:
-
-```
-sudo rm /etc/motd
-sudo ln -s /home/pi/emonpi/motd /etc/motd
-```
-
 ## Memory Tweak
 
 Append `gpu_mem=16` to `/boot/config.txt` this caps the RAM available to the GPU. Since we are running headless this will give us more RAM at the expense of the GPU
