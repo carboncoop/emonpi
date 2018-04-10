@@ -198,11 +198,13 @@ To fix SSHD bug (when using the on board WiFi adapter and NO Ethernet). [Forum t
 
 Debian Stretch (https://wiki.debian.org/DebianStretch) has fully made the transition to systemd, with many core pieces now systemd 'native'.
 
+One aspect of the previous emonSD setup (pre-Stretch) which is inconsistent with systemd in general is that /var should be RW at all times. This means that /var should not be part of the read only rootfs.
+
 One of the (many) design goals of systemd is to facilitate `volatile` and `stateless` Linux installations (http://0pointer.net/blog/projects/stateless.html) which have applications in security-sensitive and embedded applications. To this end, recent systemd-based Linux are generally able to populate an empty /var at boot without issue. This aligns well with the requirement to reduce IO to prolong the life of SD memory as /var can be mounted as a tmpfs and populated at runtime further reducing the need for disk writes. 
 
 In a `volatile` configuration /etc continues to be used for local configuration information which persists across reboots (a `stateless` configuration would additionally mount /etc/ as a tmpfs).
 
-One aspect of the previous emonSD setup (pre-Stretch) which is inconsistent with systemd in general is that /var should be RW at all times. This means that /var should be mounted as tmpfs rather than be part of the read only rootfs. All data created at runtime that needs to be persisted across reboots must then be stored either in /home/pi/data. This is reflected in the below although.
+In the below /var is mounted as a tmpfs and /etc is part of the read only rootfs.
 
 ## Setup Data partition
 
@@ -412,26 +414,11 @@ The previous scheme using the ntp-backup service is no longer required as fake-h
 
 We now need to reload and restart the fake-hwclock daemon:
 	sudo systemctl daemon-reload
+	sudo systemctl enable fake-hwclock-tick.timer
+	sudo systemctl enable fake-hwclock
 	sudo systemctl restart fake-hwclock
 
 ### Fix Random seed (not needed in Debain Stretch)
-
-## Install Docker 
-
-**Issue:** 
-Docker typically runs from /var/lib but this will not be persisted . 
-
-**Solution:**
-Install Docker and Docker Compose:
-	sudo apt-get install apt-listchanges
-	sudo apt-get install docker.io docker-compose
-	
-Move the Docker directory to /home/pi/data by ensuring the following is set in the file /etc/default/docker:
-	DOCKER_OPTS="-g /home/pi/data/docker"
-	sudo mkdir -p /home/pi/data/docker
-	sudo systemctl restart docker
-
-
 
 ## Move MYSQL database
 
@@ -445,6 +432,32 @@ Move the database:
 Change MYSQL config to use database in new RW location change line `datadir` to `/home/pi/data/mysql`
 
 	sudo nano /etc/mysql/my.cnf
+
+## Install Docker 
+
+**Issue:** 
+Docker typically runs from /var/lib but this will not be persisted . 
+
+**Solution:**
+Install Docker and Docker Compose:
+
+	sudo apt-get install apt-listchanges
+	sudo apt-get install docker.io docker-compose
+	
+Move the Docker directory to /home/pi/data by ensuring the following is set in the file /etc/default/docker:
+
+	DOCKER_OPTS="-g /home/pi/data/docker"
+	
+Now move Docker:
+
+	sudo systemctl start docker
+	sudo mkdir -p /home/pi/data/docker
+	sudo systemctl stop docker
+	
+The old directory can also be cleaned up:
+
+	sudo rm -rf /var/lib/docker
+
 # Install emonPi Services
 
 	sudo apt-get install git-core -y
