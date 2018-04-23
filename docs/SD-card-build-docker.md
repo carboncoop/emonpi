@@ -190,6 +190,14 @@ To fix SSHD bug (when using the on board WiFi adapter and NO Ethernet). [Forum t
 
 ***
 
+## Raspberry Pi 3 B+ Wifi
+The wifi on the Pi3B+ is soft killed on boot unless 'country=' is set to an appropriate ISO 3166 alpha2 country code in wpa_supplicant.conf e.g. add the following to the top of the file:
+	
+	country=GB
+	
+See: https://www.raspberrypi.org/forums/viewtopic.php?p=1286153 
+
+
 # Setup Read-only filesystem
 
 # Enable root filesystem read-only mode
