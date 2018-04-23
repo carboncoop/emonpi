@@ -82,6 +82,9 @@
 
 # Initial Linux Setup
 
+## Enable SSH
+Put a file called 'ssh' on the boot partition.
+
 ## Update
 
 	sudo apt-get update -y
@@ -357,7 +360,7 @@ And then symlinked by adding an entry in /etc/tmpfiles.d/dpkg.conf
 
 Going forward systemd-timesyncd is able to perform time synchronisation (and is now the default on Debian). In the future it will also be able to maintain a fake hardware clock without requiring the use of fake-hwclock. However, the implementation of systemd-timesyncd in Debian Stretch seems to have some problems (e.g. failing quietly when using the RO rootfs despite links to RW) so use of ntpd has been retained. This first needs to be installed:
 
-	sudo apt-get install ntpd
+	sudo apt-get install ntp
 	sudo systemctl start ntp
 	sudo timedatectl set-ntp 1
 	
@@ -421,6 +424,7 @@ And the following in /etc/systemd/system/fake-hwclock-tick.timer:
 The previous scheme using the ntp-backup service is no longer required as fake-hwclock systemd service can be modified to run after all filesystems have been mounted which prevents the time being reset.
 
 We now need to reload and restart the fake-hwclock daemon:
+
 	sudo systemctl daemon-reload
 	sudo systemctl enable fake-hwclock-tick.timer
 	sudo systemctl enable fake-hwclock
@@ -447,10 +451,12 @@ Change MYSQL config to use database in new RW location change line `datadir` to 
 Docker typically runs from /var/lib but this will not be persisted . 
 
 **Solution:**
-Install Docker and Docker Compose:
+Install Docker CE and Docker Compose:
 
-	sudo apt-get install apt-listchanges
-	sudo apt-get install docker.io docker-compose
+	curl -fsSL get.docker.com -o get-docker.sh
+	sudo sh get-docker.sh
+	
+	sudo 
 	
 Move the Docker directory to /home/pi/data by ensuring the following is set in the file /etc/default/docker:
 
