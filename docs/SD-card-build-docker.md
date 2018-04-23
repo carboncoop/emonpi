@@ -323,16 +323,16 @@ Add the following in /etc/tmpfiles.d/systemd-timesyncd.conf:
 	L /var/tmp -    -    -    -   /tmp
 	d /var/lib/systemd/timesync 0755 root root -
 
-### dpkg tmpfiles (new)
+### dpkg (new)
 
-dpkg needs various files/directories to be created under /var/lib/dpkg in order to work properly.
+dpkg retains information about the packages installed on the system in /var/lib/dpkg and so it is desirable to persist this across reboots if one wants to continue to modify the system using the package manager etc. To achieve this the admin directory of dpkg can be moved to the rootfs:
 
-	# Type Path                     Mode    UID     GID     Age     Argument
-	d /var/lib/dpkg 0755 root root -
-	d /var/lib/dpkg/updates 0755 root root -
-	d /var/lib/dpkg/info 0755 root root -
-	d /var/lib/dpkg/alternatives 0755 root root -
-	f /var/lib/dpkg/status 0755 root root - 
+	sudo mv /var/lib/dpkg /home/pi/dpkg
+
+And then symlinked by adding an entry in /etc/tmpfiles.d/dpkg.conf
+	
+	# Type Path    Mode UID  GID  Age Argument
+	L /var/lib/dpkg -    -    -    -   /home/pi/dpkg
 
 ### DNS Resolve fix (alternate solution under Debian Stretch)
 
