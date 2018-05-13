@@ -460,12 +460,9 @@ Move the Docker directory to /home/pi/data (this assumes you want a fresh docker
 
 	sudo systemctl stop docker
 	sudo mkdir -p /home/pi/data/docker
+	sudo rm -rf /var/lib/docker #if wanted you should copy contents instead
 	sudo ln -s /home/pi/data/docker /var/lib/docker
 	sudo systemctl start docker
-	
-The old directory can also be cleaned up:
-
-	sudo rm -rf /var/lib/docker
 
 # Install emonPi Services
 
