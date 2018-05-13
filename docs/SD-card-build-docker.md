@@ -456,17 +456,12 @@ Install Docker CE and Docker Compose:
 	curl -fsSL get.docker.com -o get-docker.sh
 	sudo sh get-docker.sh
 	
-	sudo 
-	
-Move the Docker directory to /home/pi/data by ensuring the following is set in the file /etc/default/docker:
+Move the Docker directory to /home/pi/data (this assumes you want a fresh docker folder otherwise copy it)...
 
-	DOCKER_OPTS="-g /home/pi/data/docker"
-	
-Now move Docker:
-
-	sudo systemctl start docker
-	sudo mkdir -p /home/pi/data/docker
 	sudo systemctl stop docker
+	sudo mkdir -p /home/pi/data/docker
+	sudo ln -s /home/pi/data/docker /var/lib/docker
+	sudo systemctl start docker
 	
 The old directory can also be cleaned up:
 
